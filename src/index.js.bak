@@ -1,21 +1,31 @@
+const http = require('http');
 const { WebSocketServer, WebSocket } = require('ws');
+const fs = require('fs');
+const path = require('path');
 
 const PORT = 8080;
 
-// WebSocket専用サーバー
-const wss = new WebSocketServer({ port: PORT });
-
-wss.on('listening', () => {
-  console.log(`WebSocketサーバー起動: ws://localhost:${PORT}`);
-});
-
-wss.on('error', (err) => {
-  if (err.code === 'EADDRINUSE') {
-    console.error(`ポート ${PORT} はすでに使用中です。`);
+// HTTPサーバー: public/index.html を配信
+const server = http.createServer((req, res) => {
+  if (req.url === '/' || req.url === '/index.html') {
+    const filePath = path.join(__dirname, '../public/index.html');
+    fs.readFile(filePath, (err, data) => {
+      if (err) {
+        res.writeHead(500, { 'Content-Type': 'text/plain' });
+        res.end('Internal Server Error');
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(data);
+    });
   } else {
-    console.error('[サーバーエラー]', err.message);
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('Not Found');
   }
 });
+
+// WebSocketサーバー: 同一ポートでHTTPと共存
+const wss = new WebSocketServer({ server });
 
 // 接続中クライアント管理: Map<ws, username>
 const clients = new Map();
@@ -36,7 +46,6 @@ function broadcast(data) {
 }
 
 wss.on('connection', (ws) => {
-  console.log('接続!!!');
   clients.set(ws, null); // username未設定で登録
 
   ws.on('message', (rawData) => {
@@ -78,6 +87,17 @@ wss.on('connection', (ws) => {
   });
 });
 
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`ポート ${PORT} はすでに使用中です。`);
+  } else {
+    console.error('[サーバーエラー]', err.message);
+  }
+});
+
+server.listen(PORT, () => {
+  console.log(`サーバー起動: http://localhost:${PORT}`);
+});
 
 // Ctrl+C を押したときに実行される
 process.on('SIGINT', () => {
